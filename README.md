@@ -42,11 +42,32 @@ bash openviking-windows/install-openviking-windows.sh --yes --harness zcode
 - **Node.js 18+**（Volta 管理的 node 也可，脚本会自动绕过其 shim 缺陷）
 - `curl`、`unzip`（Git Bash 自带）；`npm` 仅在 `--harness cli` 时需要
 
+## 没有 Git Bash？用 PowerShell 启动器
+
+仓库里的 [install-openviking-windows.ps1](./install-openviking-windows.ps1) 是给没有
+Git Bash 的机器准备的 PowerShell 薄启动器：定位 Git Bash（注册表 + PATH + 常见位置），
+找不到时**先询问（y/N）再**用 winget 安装 Git for Windows（非交互环境绝不安装、
+已安装不重装），然后获取 bash 引导脚本运行，参数原样转发。引擎仍是 bash 引导脚本。
+
+```powershell
+# 零文件一行式（交互向导）：
+iex (irm https://fastly.jsdelivr.net/gh/L9m/openviking-windows@main/install-openviking-windows.ps1)
+
+# 或下载后运行（可带参数）：
+curl.exe -fsSL -o "$env:TEMP\ov.ps1" https://fastly.jsdelivr.net/gh/L9m/openviking-windows@main/install-openviking-windows.ps1
+powershell -ExecutionPolicy Bypass -File "$env:TEMP\ov.ps1"                # 交互向导
+powershell -ExecutionPolicy Bypass -File "$env:TEMP\ov.ps1" --yes --harness zcode
+```
+
+说明：Windows 自带的 `System32\bash.exe` 是 WSL 的 bash，安装到 Linux 侧、配置不到
+Windows 的 agent，启动器会明确跳过它。
+
 ## 用法 / Usage
 
 **交互模式（推荐）**：不带任何参数直接运行，进入官方安装器的交互向导——
 选语言 → 复选框勾选要装的 agent（已探测到的预选，zcode / codex / cursor / trae /
-kimicode / ... 全部可勾）→ 服务器配置（可沿用已存的 `~/.openviking/ovcli.conf`）→
+kimicode / ... 全部可勾）→ **服务器配置也在此输入**（菜单选 本地 127.0.0.1:1933 /
+火山云 / 自定义 URL，然后输入 API key——隐藏输入不回显，回车保留已存值、`-` 清空）→
 安装计划确认。`curl | bash` 一行安装同样支持（向导从 `/dev/tty` 读输入，不受管道影响）：
 
 ```bash
