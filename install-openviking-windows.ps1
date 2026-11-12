@@ -12,7 +12,8 @@ OpenViking memory plugin — Windows 安装的 PowerShell 启动器（非官方�
     powershell -ExecutionPolicy Bypass -File install-openviking-windows.ps1
   非交互:
     powershell -ExecutionPolicy Bypass -File install-openviking-windows.ps1 --yes --harness zcode
-  零文件一行式（直接执行远端脚本，交互向导）:
+  零文件一行式（直接执行远端脚本；注意 iex 无法携带参数，仅交互终端使用——
+  向导会正常弹出；无终端环境下 bash 侧保护会拒绝默认安装）:
     iex (irm https://fastly.jsdelivr.net/gh/L9m/openviking-windows@main/install-openviking-windows.ps1)
 
 说明:
@@ -31,7 +32,10 @@ param(
 $ErrorActionPreference = 'Stop'
 function Info($m) { Write-Host "==> $m" }
 function Warn($m) { Write-Host "!!  $m" -ForegroundColor Yellow }
-function Die($m)  { Write-Host "xx  $m" -ForegroundColor Red; exit 1 }
+# 审查修复：用 throw 而非 exit——`iex (irm ...)` 一行式运行在用户的交互
+# PowerShell 会话里，exit 会直接关掉整个控制台；throw 两种模式都正确
+# （-File 模式同样以非零退出码结束）。
+function Die($m)  { throw $m }
 
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 
@@ -122,4 +126,7 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $shPosix = ($sh -replace '\\', '/')
 Info "运行引导脚本（参数原样转发）..."
 & $bash $shPosix @RemainingArgs
-exit $LASTEXITCODE
+# 审查修复：-File 模式透传退出码；iex 模式成功时不 exit（exit 会关掉用户
+# 的交互 PowerShell 会话），失败时 throw 报错。
+if ($PSScriptRoot) { exit $LASTEXITCODE }
+if ($LASTEXITCODE -ne 0) { throw "安装器退出码 $LASTEXITCODE" }

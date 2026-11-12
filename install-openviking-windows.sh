@@ -130,12 +130,16 @@ workbuddy_install() {
   local shared="$ov_home/agent-integrations/memory-plugin-shared/lib"
   local mcp_file="$HOME/.workbuddy/connectors/default/mcp.json"
   local need_bundle=0
+  # 审查修复：WorkBuddy 不存在时不写孤儿配置（~/.workbuddy 由其本身创建）
+  [ -d "$HOME/.workbuddy" ] || die "未检测到 WorkBuddy（~/.workbuddy 不存在）。请先安装 WorkBuddy 再运行 --workbuddy。"
   [ -f "$integ/servers/mcp-proxy.mjs" ] || need_bundle=1
   [ -f "$shared/MANIFEST" ] || need_bundle=1
 
   if [ "$need_bundle" -eq 1 ]; then
     local workdir zdir unpacked base url downloaded=0 f
     workdir="$(mktemp -d "${TMPDIR:-/tmp}/ov-workbuddy.XXXXXX")" || die "mktemp 失败"
+    # 审查修复：中途 die 时清理临时目录（此前会泄漏 /tmp/ov-workbuddy.*）
+    trap 'rm -rf "$workdir"' EXIT
     zdir="$workdir/mkt.zip"; unpacked="$workdir/mkt/memory-plugin-marketplace"
     for base in ${OPENVIKING_DOWNLOAD_BASE:-https://docs.openviking.net/dl https://docs.openviking.ai/dl}; do
       url="${base%/}/releases/latest/memory-plugin-marketplace.zip"
@@ -168,6 +172,7 @@ workbuddy_install() {
       note "共享运行时已组装: $(dirname "$shared")"
     fi
     rm -rf "$workdir"
+    trap - EXIT   # 已显式清理；避免退出时对失效的局部变量再执行 rm
   fi
 
   node - "$mcp_file" "$(cygpath -m "$(command -v node)")" "$(cygpath -m "$integ/servers/mcp-proxy.mjs")" <<'NODE'
@@ -223,6 +228,33 @@ NODE
 
 if [ "$WORKBUDDY_REMOVE" -eq 1 ]; then workbuddy_remove; exit 0; fi
 if [ "$WORKBUDDY" -eq 1 ]; then workbuddy_install; exit 0; fi
+
+# 审查修复（下载前）：未显式指定目标（--harness/--yes/--help）时，官方安装器
+# 会按默认值安装全部探测到的 agent（zcode/codex/kimicode/cli...）。无终端环境
+# （CI、curl|bash 进脚本、以及分配了 console 但无真人的子进程）必须拦下；
+# 有 /dev/tty 时也要求一次带回车确认——console 可打开不代表真有人在敲键盘。
+explicit=0
+for a in "$@"; do
+  case "$a" in --harness|--yes|-y|--help|-h) explicit=1; break ;; esac
+done
+if [ "$explicit" -ne 1 ]; then
+  if exec 3</dev/tty 2>/dev/null; then
+    printf '即将进入交互安装向导，按回车继续（5 秒无响应将自动中止）...'
+    if ! IFS= read -r -t 5 _ <&3; then
+      exec 3<&-
+      die "无响应：检测到非真实交互环境，已中止（未下载、未安装任何内容）。
+显式指定请用:  $0 --harness <list> [--yes]   或  $0 --help"
+    fi
+    exec 3<&-
+  else
+    die "无交互终端且未指定目标：为避免按默认安装全部探测到的 agent，已中止
+（未下载、未安装任何内容）。在交互终端中直接运行本脚本可进入选择向导；
+或显式指定，例如:
+    $0 --yes --harness zcode            # 非交互安装到指定 agent
+    $0 --harness zcode,codex --url <url> --api-key <key>
+    $0 --help                            # 查看全部参数"
+  fi
+fi
 
 # ------------------------------------------------------------------- download
 workdir="$(mktemp -d "${TMPDIR:-/tmp}/ov-win-install.XXXXXX")" || die "mktemp 失败"
