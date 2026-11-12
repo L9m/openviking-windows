@@ -92,6 +92,22 @@ bash install-openviking-windows.sh --keep ...
 `--harness` 可选值与全部参数见官方安装器（`--help`）：claude, codex, cursor, trae, trae-cn,
 trae-cli, zcode, kimicode, codebuddy, opencode, pi, dsh, cli。
 
+### WorkBuddy（腾讯 GUI 版，实验性）
+
+官方 harness 列表没有 WorkBuddy，本脚本以 MCP-only 方式单独支持（`--workbuddy`）：
+组装 mcp-proxy 运行时到 `~/.openviking/agent-integrations/workbuddy`，向
+`~/.workbuddy/connectors/default/mcp.json` 合并一个 stdio 型 `openviking` server 条目
+（幂等、写前备份，原有连接器不动）。重启 WorkBuddy 后其 agent 即可调用 OpenViking 的
+MCP 工具检索/保存记忆。
+
+```bash
+bash install-openviking-windows.sh --workbuddy           # 安装
+bash install-openviking-windows.sh --workbuddy-remove    # 移除
+```
+
+> 已在 Windows 实测：JSON-RPC initialize 握手正常、24 个工具可用。局限：WorkBuddy
+> 没有 hooks 机制，记忆不会自动注入对话，需要其 agent 按需调用 MCP 工具。
+
 ## 它修了什么 / The 8 patches
 
 | # | 补丁 | 原因 |

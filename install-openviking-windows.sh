@@ -26,7 +26,12 @@
 #     bash install-openviking-windows.sh --help          # 官方参数总览
 #
 #   本脚本自有参数:
-#     --keep, -k    保留临时目录（含打完补丁的安装器）供检查
+#     --keep, -k          保留临时目录（含打完补丁的安装器）供检查
+#     --workbuddy         给腾讯 WorkBuddy（GUI，~/.workbuddy）安装 OpenViking
+#                         MCP 集成：组装运行时 + 往 connectors/default/mcp.json
+#                         合并 openviking server 条目（stdio）。WorkBuddy 无
+#                         hooks 机制，记忆自动注入不可用，MCP 工具按需调用。
+#     --workbuddy-remove  移除 WorkBuddy 的 OpenViking MCP 集成
 #
 # 环境要求: Git Bash (MSYS2/MINGW/Cygwin)、Node.js 18+、curl、unzip
 #           （npm 可选，仅 --harness cli 需要）
@@ -55,10 +60,14 @@
 set -Eeuo pipefail
 
 KEEP=0
+WORKBUDDY=0
+WORKBUDDY_REMOVE=0
 forward_args=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --keep|-k) KEEP=1; shift ;;
+    --workbuddy) WORKBUDDY=1; shift ;;
+    --workbuddy-remove) WORKBUDDY_REMOVE=1; shift ;;
     --) shift; while [ "$#" -gt 0 ]; do forward_args+=("$1"); shift; done; break ;;
     *) forward_args+=("$1"); shift ;;
   esac
@@ -108,6 +117,112 @@ console.log("probe");
 （volta.sh）或官方 Node.js（nodejs.org）后重试。"
   fi
 fi
+
+# ------------------------------------------------------------- workbuddy MCP
+# 腾讯 WorkBuddy（GUI，~/.workbuddy）没有 CLI、也没有 hooks 机制，但它的 MCP
+# 配置 ~/.workbuddy/connectors/default/mcp.json 接受 stdio server（command+args，
+# 连接器市场里已有 "command": "npx" 型先例）。安装 = 在
+# ~/.openviking/agent-integrations/workbuddy 组装 mcp-proxy 运行时，并向该
+# mcp.json 合并一个 openviking server 条目（幂等、写前备份）。
+workbuddy_install() {
+  local ov_home="${OPENVIKING_HOME:-$HOME/.openviking}"
+  local integ="$ov_home/agent-integrations/workbuddy"
+  local shared="$ov_home/agent-integrations/memory-plugin-shared/lib"
+  local mcp_file="$HOME/.workbuddy/connectors/default/mcp.json"
+  local need_bundle=0
+  [ -f "$integ/servers/mcp-proxy.mjs" ] || need_bundle=1
+  [ -f "$shared/MANIFEST" ] || need_bundle=1
+
+  if [ "$need_bundle" -eq 1 ]; then
+    local workdir zdir unpacked base url downloaded=0 f
+    workdir="$(mktemp -d "${TMPDIR:-/tmp}/ov-workbuddy.XXXXXX")" || die "mktemp 失败"
+    zdir="$workdir/mkt.zip"; unpacked="$workdir/mkt/memory-plugin-marketplace"
+    for base in ${OPENVIKING_DOWNLOAD_BASE:-https://docs.openviking.net/dl https://docs.openviking.ai/dl}; do
+      url="${base%/}/releases/latest/memory-plugin-marketplace.zip"
+      note "下载插件包: $url"
+      if curl -fsSL --connect-timeout 10 -m 180 -o "$zdir" "$url"; then downloaded=1; break; fi
+    done
+    [ "$downloaded" -eq 1 ] || die "插件包下载失败"
+    unzip -q "$zdir" -d "$workdir/mkt" || die "插件包解压失败"
+    [ -d "$unpacked/agent-hook-plugin" ] || die "插件包布局异常（缺少 agent-hook-plugin）"
+
+    if [ ! -f "$integ/servers/mcp-proxy.mjs" ]; then
+      rm -rf "$integ.tmp"
+      mkdir -p "$integ.tmp"
+      (cd "$unpacked/agent-hook-plugin" && tar --exclude node_modules --exclude .git -cf - .) | (cd "$integ.tmp" && tar -xf -)
+      rm -rf "$integ"
+      mkdir -p "$(dirname "$integ")"
+      mv "$integ.tmp" "$integ"
+      note "运行时已组装: $integ"
+    fi
+    # mcp-proxy 依赖的同级共享库（../../memory-plugin-shared/lib，MANIFEST 闭包）
+    if [ ! -f "$shared/MANIFEST" ]; then
+      mkdir -p "$shared.tmp"
+      while read -r f; do
+        [ -n "$f" ] && cp "$unpacked/memory-plugin-shared/lib/$f" "$shared.tmp/$f"
+      done < "$unpacked/memory-plugin-shared/lib/MANIFEST"
+      cp "$unpacked/memory-plugin-shared/lib/MANIFEST" "$shared.tmp/MANIFEST"
+      rm -rf "$shared"
+      mkdir -p "$(dirname "$shared")"
+      mv "$shared.tmp" "$shared"
+      note "共享运行时已组装: $(dirname "$shared")"
+    fi
+    rm -rf "$workdir"
+  fi
+
+  node - "$mcp_file" "$(cygpath -m "$(command -v node)")" "$(cygpath -m "$integ/servers/mcp-proxy.mjs")" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+const [file, cmd, script] = process.argv.slice(2);
+let cfg = {};
+try { cfg = JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { if (e.code !== "ENOENT") throw e; }
+cfg.mcpServers = cfg.mcpServers && typeof cfg.mcpServers === "object" && !Array.isArray(cfg.mcpServers) ? cfg.mcpServers : {};
+const next = {
+  command: cmd,
+  args: [script],
+  env: { OPENVIKING_INTEGRATION_ID: "openviking-memory", OPENVIKING_HOOK_SOURCE: "workbuddy" },
+};
+if (JSON.stringify(cfg.mcpServers.openviking || null) === JSON.stringify(next)) {
+  console.log("已是最新，无需修改");
+  process.exit(0);
+}
+if (fs.existsSync(file)) fs.writeFileSync(file + ".bak", fs.readFileSync(file));
+fs.mkdirSync(path.dirname(file), { recursive: true });
+cfg.mcpServers.openviking = next;
+fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n");
+console.log("已写入 openviking server 条目: " + file);
+NODE
+  note "重启 WorkBuddy 后生效（连接器/工具列表会出现 openviking）"
+  note "说明: WorkBuddy 无 hooks 机制，OpenViking 记忆不会自动注入对话；其 agent 可按需调用 openviking MCP 工具检索/保存记忆"
+}
+
+workbuddy_remove() {
+  local ov_home="${OPENVIKING_HOME:-$HOME/.openviking}"
+  local mcp_file="$HOME/.workbuddy/connectors/default/mcp.json"
+  local integ="$ov_home/agent-integrations/workbuddy"
+  if [ -f "$mcp_file" ]; then
+    node - "$mcp_file" <<'NODE'
+const fs = require("node:fs");
+const file = process.argv[2];
+let cfg;
+try { cfg = JSON.parse(fs.readFileSync(file, "utf8")); } catch { process.exit(0); }
+if (!cfg.mcpServers || !cfg.mcpServers.openviking) { console.log("未发现 openviking 条目"); process.exit(0); }
+if (!JSON.stringify(cfg.mcpServers.openviking).includes("mcp-proxy.mjs")) {
+  console.log("openviking 条目不是本脚本写入的，跳过");
+  process.exit(0);
+}
+delete cfg.mcpServers.openviking;
+fs.writeFileSync(file + ".bak", fs.readFileSync(file));
+fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n");
+console.log("已移除 openviking 条目: " + file);
+NODE
+  fi
+  rm -rf "$integ"
+  note "已移除 WorkBuddy 集成目录: $integ"
+}
+
+if [ "$WORKBUDDY_REMOVE" -eq 1 ]; then workbuddy_remove; exit 0; fi
+if [ "$WORKBUDDY" -eq 1 ]; then workbuddy_install; exit 0; fi
 
 # ------------------------------------------------------------------- download
 workdir="$(mktemp -d "${TMPDIR:-/tmp}/ov-win-install.XXXXXX")" || die "mktemp 失败"
