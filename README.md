@@ -65,7 +65,11 @@ powershell -ExecutionPolicy Bypass -File "$env:TEMP\ov.ps1" --yes --harness zcod
 ```
 
 说明：Windows 自带的 `System32\bash.exe` 是 WSL 的 bash，安装到 Linux 侧、配置不到
-Windows 的 agent，启动器会明确跳过它。
+Windows 的 agent，启动器会明确跳过它。**交互向导对终端有要求**：官方向导依赖 ANSI
+重绘和 `/dev/tty` 单键读取，在 Git Bash 窗口（mintty）和 Windows Terminal 下正常；在
+传统 conhost（PowerShell/cmd 直开的窗口）里可能卡顿、回车无响应——启动器检测到交互
+场景会自动用 Git 自带的 mintty 新开窗口运行向导；直接用 bash 时请优先在 Git Bash 窗口
+里跑。
 
 ## 用法 / Usage
 

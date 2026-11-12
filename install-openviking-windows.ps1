@@ -127,6 +127,19 @@ if (-not $sh) {
 # bash 引导脚本输出 UTF-8；PowerShell 5.1 默认按系统 ANSI(GBK) 解码会显示乱码
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $shPosix = ($sh -replace '\\', '/')
+
+# 交互场景（无参数 + 真实控制台）优先用 Git 自带的 mintty 新开真 PTY 窗口：
+# 在传统 conhost（PowerShell/cmd 直开）里 MSYS bash 处于 Win32 console 模式，
+# 官方向导的 ANSI 重绘与 /dev/tty 单键读取会失灵（表现为卡顿、回车无响应）。
+$interactive = ($null -eq $RemainingArgs -or $RemainingArgs.Count -eq 0) -and -not [Console]::IsInputRedirected
+$mintty = [IO.Path]::GetFullPath((Join-Path (Split-Path $bash) '..\usr\bin\mintty.exe'))
+if ($interactive -and (Test-Path $mintty)) {
+  Info "正在 mintty 终端窗口中打开交互向导（请在新窗口中操作）..."
+  & $mintty --exec "$bash" $shPosix
+  if ($LASTEXITCODE -ne 0) { throw "安装器退出码 $LASTEXITCODE" }
+  return
+}
+
 Info "运行引导脚本（参数原样转发）..."
 & $bash $shPosix @RemainingArgs
 # 审查修复：-File 模式透传退出码；iex 模式成功时不 exit（exit 会关掉用户
