@@ -56,7 +56,7 @@ Git Bash 的机器准备的 PowerShell 薄启动器：定位 Git Bash（注册�
 
 ```powershell
 # 零文件一行式（注意 iex 无法携带参数，仅交互终端使用；非交互环境会被拒绝而非默认全装）：
-iex (irm https://fastly.jsdelivr.net/gh/L9m/openviking-windows@main/install-openviking-windows.ps1)
+iex (New-Object Net.WebClient).DownloadString('https://fastly.jsdelivr.net/gh/L9m/openviking-windows@main/install-openviking-windows.ps1')
 
 # 或下载后运行（可带参数）：
 curl.exe -fsSL -o "$env:TEMP\ov.ps1" https://fastly.jsdelivr.net/gh/L9m/openviking-windows@main/install-openviking-windows.ps1

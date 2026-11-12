@@ -14,7 +14,10 @@ OpenViking memory plugin — Windows 安装的 PowerShell 启动器（非官方�
     powershell -ExecutionPolicy Bypass -File install-openviking-windows.ps1 --yes --harness zcode
   零文件一行式（直接执行远端脚本；注意 iex 无法携带参数，仅交互终端使用——
   向导会正常弹出；无终端环境下 bash 侧保护会拒绝默认安装）:
-    iex (irm https://fastly.jsdelivr.net/gh/L9m/openviking-windows@main/install-openviking-windows.ps1)
+    iex (New-Object Net.WebClient).DownloadString('https://fastly.jsdelivr.net/gh/L9m/openviking-windows@main/install-openviking-windows.ps1')
+  ⚠ 不要用 iex (irm ...)：CDN 返回 application/octet-stream（无 charset）时，
+  PS 5.1 的 irm 按 Latin-1 解码，UTF-8 BOM 变成 "ï»¿#Requires"，脚本无法解析。
+  WebClient.DownloadString 会识别并剥掉 BOM。
 
 说明:
   - Windows 自带的 System32\bash.exe 是 WSL 的 bash：它安装到 Linux 侧的 $HOME，
@@ -32,7 +35,7 @@ param(
 $ErrorActionPreference = 'Stop'
 function Info($m) { Write-Host "==> $m" }
 function Warn($m) { Write-Host "!!  $m" -ForegroundColor Yellow }
-# 审查修复：用 throw 而非 exit——`iex (irm ...)` 一行式运行在用户的交互
+# 审查修复：用 throw 而非 exit——`iex (...)` 一行式运行在用户的交互
 # PowerShell 会话里，exit 会直接关掉整个控制台；throw 两种模式都正确
 # （-File 模式同样以非零退出码结束）。
 function Die($m)  { throw $m }
