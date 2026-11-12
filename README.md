@@ -44,6 +44,17 @@ bash openviking-windows/install-openviking-windows.sh --yes --harness zcode
 
 ## 用法 / Usage
 
+**交互模式（推荐）**：不带任何参数直接运行，进入官方安装器的交互向导——
+选语言 → 复选框勾选要装的 agent（已探测到的预选，zcode / codex / cursor / trae /
+kimicode / ... 全部可勾）→ 服务器配置（可沿用已存的 `~/.openviking/ovcli.conf`）→
+安装计划确认。`curl | bash` 一行安装同样支持（向导从 `/dev/tty` 读输入，不受管道影响）：
+
+```bash
+bash install-openviking-windows.sh
+```
+
+非交互模式（脚本 / CI 用，加 `--yes` 跳过全部提问）：
+
 ```bash
 # 安装到自动探测到的 agent（或用 --harness 指定，逗号分隔）
 bash install-openviking-windows.sh --yes --harness zcode

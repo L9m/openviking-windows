@@ -13,7 +13,12 @@
 # 用法 / Usage (Git Bash on Windows):
 #   bash install-openviking-windows.sh [官方安装器的任意参数]
 #
-#   常用示例:
+#   交互模式（推荐）：不带任何参数运行，进入官方安装器的交互向导——
+#   选语言 → 复选框勾选 agent（zcode / codex / cursor / trae / ...，已探测到的预选）
+#   → 服务器配置 → 安装计划确认。curl | bash 一行安装同样支持。
+#     bash install-openviking-windows.sh
+#
+#   常用示例（非交互，脚本/CI 用）:
 #     bash install-openviking-windows.sh --yes --harness zcode
 #     bash install-openviking-windows.sh --yes --harness zcode,codex \
 #          --url <server-url> --api-key <key>
