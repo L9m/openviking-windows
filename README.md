@@ -10,15 +10,19 @@ time. Not affiliated with the upstream project.
 
 ## 一行安装 / One-liner
 
-标准方式（`raw.githubusercontent.com` 可达时）：
+**交互式（推荐，真人使用）**——不带参数，回车确认后进入向导，勾选 agent、输入服务器和 API key：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/L9m/openviking-windows/main/install-openviking-windows.sh \
-  | bash -s -- --yes --harness zcode
+curl -fsSL https://fastly.jsdelivr.net/gh/L9m/openviking-windows@main/install-openviking-windows.sh | bash -s --
 ```
 
-`raw.githubusercontent.com` 被重置的网络（如国内常见情况），用 jsDelivr 的 Fastly 节点，
-内容与仓库一致：
+标准通道（`raw.githubusercontent.com` 可达时等效）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/L9m/openviking-windows/main/install-openviking-windows.sh | bash -s --
+```
+
+**非交互（脚本 / CI / 发给别人直接粘贴）**——显式指定目标，无需任何输入，结果可预测；也是无终端环境下唯一能运行的形式：
 
 ```bash
 curl -fsSL https://fastly.jsdelivr.net/gh/L9m/openviking-windows@main/install-openviking-windows.sh \
@@ -33,7 +37,8 @@ curl -fsSL https://fastly.jsdelivr.net/gh/L9m/openviking-windows@main/install-op
 
 ```bash
 git clone https://github.com/L9m/openviking-windows.git
-bash openviking-windows/install-openviking-windows.sh --yes --harness zcode
+bash openviking-windows/install-openviking-windows.sh        # 交互向导
+bash openviking-windows/install-openviking-windows.sh --yes --harness zcode   # 非交互
 ```
 
 ## 前置要求 / Requirements
