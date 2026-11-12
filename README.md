@@ -64,11 +64,14 @@ Windows 的 agent，启动器会明确跳过它。
 
 ## 用法 / Usage
 
-**交互模式（推荐）**：不带任何参数直接运行，进入官方安装器的交互向导——
+**交互模式（推荐）**：不带任何参数直接运行——先按一次**回车确认**（5 秒无响应自动中止，
+防止 CI/脚本误装），然后进入官方安装器的交互向导——
 选语言 → 复选框勾选要装的 agent（已探测到的预选，zcode / codex / cursor / trae /
 kimicode / ... 全部可勾）→ **服务器配置也在此输入**（菜单选 本地 127.0.0.1:1933 /
 火山云 / 自定义 URL，然后输入 API key——隐藏输入不回显，回车保留已存值、`-` 清空）→
-安装计划确认。`curl | bash` 一行安装同样支持（向导从 `/dev/tty` 读输入，不受管道影响）：
+安装计划确认。`curl | bash` 一行安装同样支持（向导从 `/dev/tty` 读输入，不受管道影响）。**注意**：未显式给出
+`--harness` / `--yes` 且无交互终端时（CI、被其他脚本调用），脚本会直接拒绝运行而不是按默认装全部——
+请显式指定目标。
 
 ```bash
 bash install-openviking-windows.sh
@@ -134,6 +137,8 @@ bash install-openviking-windows.sh --workbuddy-remove    # 移除
 ```
 校验环境（Git Bash + Node 18+ + curl + unzip）
   → Volta shim 自检
+  → 确认闸门：未显式 --harness/--yes/--help 时，无终端直接拒绝；有终端也需回车确认
+    （上游安装器在无终端时按默认安装全部探测到的 agent，这是护栏）
   → 下载官方 install.sh（docs.openviking.net / docs.openviking.ai，双源顺序回退，校验文件头）
   → 8 个补丁：每个锚点在上游文件中必须恰好出现一次，任何失配立即中止
   → bash -n 语法校验
