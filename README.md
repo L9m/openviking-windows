@@ -10,12 +10,26 @@ time. Not affiliated with the upstream project.
 
 ## 一行安装 / One-liner
 
+标准方式（`raw.githubusercontent.com` 可达时）：
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/L9m/openviking-windows/main/install-openviking-windows.sh \
   | bash -s -- --yes --harness zcode
 ```
 
-网络受限环境（`raw.githubusercontent.com` 不可达时）用克隆方式，效果相同：
+`raw.githubusercontent.com` 被重置的网络（如国内常见情况），用 jsDelivr 的 Fastly 节点，
+内容与仓库一致：
+
+```bash
+curl -fsSL https://fastly.jsdelivr.net/gh/L9m/openviking-windows@main/install-openviking-windows.sh \
+  | bash -s -- --yes --harness zcode
+```
+
+> jsDelivr 有 CDN 缓存，新推送的提交可能延迟几分钟到几小时才可见；引导脚本本身会在
+> 运行时下载**最新**官方安装器，所以引导脚本略有滞后影响很小。必要时可在
+> [jsdelivr.com/tools/purge](https://www.jsdelivr.com/tools/purge) 手动刷新缓存。
+
+克隆方式（完全不依赖 raw / CDN）：
 
 ```bash
 git clone https://github.com/L9m/openviking-windows.git
