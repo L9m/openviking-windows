@@ -15,6 +15,13 @@ curl -fsSL https://raw.githubusercontent.com/L9m/openviking-windows/main/install
   | bash -s -- --yes --harness zcode
 ```
 
+网络受限环境（`raw.githubusercontent.com` 不可达时）用克隆方式，效果相同：
+
+```bash
+git clone https://github.com/L9m/openviking-windows.git
+bash openviking-windows/install-openviking-windows.sh --yes --harness zcode
+```
+
 ## 前置要求 / Requirements
 
 - Windows 上的 **Git Bash**（MSYS2 / MINGW / Cygwin 终端均可）—— [git-scm.com](https://git-scm.com)
