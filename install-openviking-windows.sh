@@ -227,9 +227,14 @@ let cfg = {};
 try { cfg = JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { if (e.code !== "ENOENT") throw e; }
 cfg.mcpServers = cfg.mcpServers && typeof cfg.mcpServers === "object" && !Array.isArray(cfg.mcpServers) ? cfg.mcpServers : {};
 const next = {
+  // Field set mirrors the marketplace's own stdio connectors (e.g. dcs-cloud):
+  // an explicit type is required for WorkBuddy to treat the entry as stdio;
+  // without it the entry is parsed but never spawned.
+  type: "stdio",
   command: cmd,
   args: [script],
   env: { OPENVIKING_INTEGRATION_ID: "openviking-memory", OPENVIKING_HOOK_SOURCE: "workbuddy" },
+  timeout: 60000,
 };
 if (JSON.stringify(cfg.mcpServers.openviking || null) === JSON.stringify(next)) {
   console.log("已是最新，无需修改");
