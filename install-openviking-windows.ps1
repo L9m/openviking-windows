@@ -146,7 +146,7 @@ $mintty = [IO.Path]::GetFullPath((Join-Path (Split-Path $bash) '..\usr\bin\mintt
 if ($interactive -and (Test-PathSafe $mintty)) {
   Info "正在 mintty 终端窗口中打开交互向导（请在新窗口中操作）..."
   & $mintty --exec "$bash" $shPosix
-  if ($LASTEXITCODE -ne 0) { throw "安装器退出码 $LASTEXITCODE" }
+  if ($LASTEXITCODE -ne 0) { throw "安装器退出码 $LASTEXITCODE —— 具体失败原因见上方 bash 输出（常见：无法下载官方安装器=网络不通；或未指定 --harness 被安全闸门拦下）" }
   return
 }
 
@@ -155,4 +155,4 @@ Info "运行引导脚本（参数原样转发）..."
 # 审查修复：-File 模式透传退出码；iex 模式成功时不 exit（exit 会关掉用户
 # 的交互 PowerShell 会话），失败时 throw 报错。
 if ($PSScriptRoot) { exit $LASTEXITCODE }
-if ($LASTEXITCODE -ne 0) { throw "安装器退出码 $LASTEXITCODE" }
+if ($LASTEXITCODE -ne 0) { throw "安装器退出码 $LASTEXITCODE —— 具体失败原因见上方 bash 输出（常见：无法下载官方安装器=网络不通；或未指定 --harness 被安全闸门拦下）" }
