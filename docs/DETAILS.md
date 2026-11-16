@@ -104,6 +104,22 @@ bash install-openviking-windows.sh --keep ...
 `--harness` 可选值与全部参数见官方安装器（`--help`）：claude, codex, cursor, trae, trae-cn,
 trae-cli, zcode, kimicode, codebuddy, opencode, pi, dsh, cli。
 
+### Cursor 在 Windows 上的 hooks（.cmd 包装）
+
+Cursor 的 hooks 只有 `command` 字符串型（没有 process 型），且 Windows 上由非 bash
+shell 执行——上游渲染的 POSIX 单引号命令（`VAR='v' 'node' 'script'`）在每个事件上
+都会失败（Cursor 3.30.14 实测）。引导脚本在安装/重装 cursor 后自动：
+
+1. 生成 `agent-integrations/cursor/scripts/hook.cmd` 与 `uri-guard.cmd`（内部设
+   环境变量并调用安装时解析的真实 node）；
+2. 把 `~/.cursor/hooks.json` 里本安装器的条目改写为带引号的正斜杠 wrapper 调用
+   （cmd.exe 实测可执行），并按事件去重（上游去重不认识 wrapper 形式，重装会追加
+   重复条目）；
+3. 卸载（`--uninstall`）时清除这些 wrapper 条目与文件（上游卸载同样不认识它们）。
+
+> 未验证：trae 的 hooks 若同样只有 command 型，则 process 转换对它无效，需要与
+> cursor 相同的 wrapper 方案——有待 Trae 环境实测。
+
 ### WorkBuddy（腾讯 GUI 版，实验性）
 
 官方 harness 列表没有 WorkBuddy，本脚本以 MCP-only 方式单独支持（`--workbuddy`）：

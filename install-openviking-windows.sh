@@ -676,6 +676,40 @@ if (changed) {
 console.log("cursor hooks -> cmd wrappers: " + changed);
 NODE
 }
-cursor_cmd_wrapper_fix
+# 卸载方向补充：上游的 ownsHook 认环境变量标记与 .mjs 脚本名，不认识
+# wrapper 形式（.cmd 路径）的条目——卸载后清掉这些残留并删除 wrapper 文件。
+cursor_cmd_wrapper_cleanup() {
+  local hooks_file="$HOME/.cursor/hooks.json"
+  local scripts_dir="${OPENVIKING_HOME:-$HOME/.openviking}/agent-integrations/cursor/scripts"
+  if [ -f "$hooks_file" ]; then
+    node - "$hooks_file" <<'NODE'
+const fs = require("node:fs");
+const [hooksFile] = process.argv.slice(2);
+const cfg = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
+let removed = 0;
+for (const [event, entries] of Object.entries(cfg.hooks || {})) {
+  const keep = entries.filter((e) => {
+    const ours = typeof e.command === "string" && e.command.includes("agent-integrations/cursor");
+    if (ours) removed++;
+    return !ours;
+  });
+  if (keep.length) cfg.hooks[event] = keep;
+  else delete cfg.hooks[event];
+}
+if (removed) {
+  fs.writeFileSync(hooksFile + ".bak", fs.readFileSync(hooksFile));
+  fs.writeFileSync(hooksFile, JSON.stringify(cfg, null, 2) + "\n");
+}
+console.log("cursor wrapper entries removed: " + removed);
+NODE
+  fi
+  rm -f "$scripts_dir/hook.cmd" "$scripts_dir/uri-guard.cmd"
+}
+
+if [ "$UNINSTALL_GIVEN" -eq 1 ]; then
+  cursor_cmd_wrapper_cleanup
+else
+  cursor_cmd_wrapper_fix
+fi
 
 exit "$status"
