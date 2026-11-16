@@ -40,31 +40,41 @@ function Warn($m) { Write-Host "!!  $m" -ForegroundColor Yellow }
 # （-File 模式同样以非零退出码结束）。
 function Die($m)  { throw $m }
 
+# 脏 PATH 免疫：某些机器的 PATH 段带引号等非法字符（如 E:\program\jre\bin"，
+# setx/安装器写坏所致）。Test-Path 对这类路径抛 ArgumentException 而不是返回
+# false，配合 ErrorActionPreference=Stop 会直接终止脚本。探测一律走这里：
+# -LiteralPath 免通配符解释，异常按"不存在"处理。
+function Test-PathSafe($p) {
+  try { return [bool](Test-Path -LiteralPath $p -ErrorAction Stop) } catch { return $false }
+}
+
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 
 # ---- 1) 定位 Git Bash（绝不使用 WSL 的 System32\bash.exe） -------------------
-if (Test-Path "$env:SystemRoot\System32\bash.exe") {
+if (Test-PathSafe "$env:SystemRoot\System32\bash.exe") {
   Warn "检测到 WSL 的 bash（System32\bash.exe）——它安装到 Linux 侧，配置不到 Windows 的 agent，不使用。"
 }
 
 $candidates = @()
 # a) 注册表：Git for Windows 官方安装器必写（机器级 HKLM / 用户级 HKCU），最可靠
 foreach ($rk in @('HKLM:\SOFTWARE\GitForWindows', 'HKCU:\SOFTWARE\GitForWindows')) {
-  if (Test-Path $rk) {
+  if (Test-PathSafe $rk) {
     $ip = (Get-ItemProperty $rk -ErrorAction SilentlyContinue).InstallPath
     if ($ip) { $candidates += (Join-Path $ip 'bin\bash.exe') }
   }
 }
 # b) PATH 扫描。兼容从 Git Bash 启动本脚本时继承的 POSIX 风格 PATH（如
 #    /d/Program Files/Git/cmd），把它换算回 Windows 路径再找 git.exe。
+#    段先清洗首尾引号/空白，脏段不致命。
 foreach ($seg in ($env:PATH -split ';')) {
+  $seg = $seg.Trim().Trim('"').Trim("'")
   if (-not $seg) { continue }
   $w = $null
   if ($seg -match '^/([a-zA-Z])/(.+)$') { $w = "$($Matches[1].ToUpper()):\$($Matches[2])" }
   elseif ($seg -match '^[a-zA-Z]:[\\/]') { $w = $seg }
   else { continue }
   $w = $w -replace '/', '\'
-  if (Test-Path (Join-Path $w 'git.exe')) { $candidates += (Join-Path (Split-Path $w) 'bin\bash.exe') }
+  if (Test-PathSafe (Join-Path $w 'git.exe')) { $candidates += (Join-Path (Split-Path $w) 'bin\bash.exe') }
 }
 # c) 原生 Windows PATH 场景
 $gitCmd = Get-Command git.exe -ErrorAction SilentlyContinue
@@ -75,7 +85,7 @@ $candidates += @(
   "${env:ProgramFiles(x86)}\Git\bin\bash.exe",
   "$env:LOCALAPPDATA\Programs\Git\bin\bash.exe"
 )
-$bash = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+$bash = $candidates | Where-Object { $_ -and (Test-PathSafe $_) } | Select-Object -First 1
 
 if (-not $bash) {
   Warn "未找到 Git Bash。请安装 Git for Windows: https://git-scm.com"
@@ -96,7 +106,7 @@ if (-not $bash) {
   & winget install -e --id Git.Git --source winget --disable-interactivity --accept-source-agreements --accept-package-agreements
   if ($LASTEXITCODE -ne 0) { Die "winget 安装失败，请手动安装: https://git-scm.com" }
   $bash = "$env:ProgramFiles\Git\bin\bash.exe"
-  if (-not (Test-Path $bash)) { Die "Git 已安装但未找到 bash.exe；请新开一个终端重试。" }
+  if (-not (Test-PathSafe $bash)) { Die "Git 已安装但未找到 bash.exe；请新开一个终端重试。" }
 }
 Info "Git Bash: $bash"
 
@@ -104,7 +114,7 @@ Info "Git Bash: $bash"
 $sh = $null
 if ($PSScriptRoot) {
   $local = Join-Path $PSScriptRoot 'install-openviking-windows.sh'
-  if (Test-Path $local) { $sh = $local; Info "使用本地引导脚本: $sh" }
+  if (Test-PathSafe $local) { $sh = $local; Info "使用本地引导脚本: $sh" }
 }
 if (-not $sh) {
   $urls = @(
@@ -133,7 +143,7 @@ $shPosix = ($sh -replace '\\', '/')
 # 官方向导的 ANSI 重绘与 /dev/tty 单键读取会失灵（表现为卡顿、回车无响应）。
 $interactive = ($null -eq $RemainingArgs -or $RemainingArgs.Count -eq 0) -and -not [Console]::IsInputRedirected
 $mintty = [IO.Path]::GetFullPath((Join-Path (Split-Path $bash) '..\usr\bin\mintty.exe'))
-if ($interactive -and (Test-Path $mintty)) {
+if ($interactive -and (Test-PathSafe $mintty)) {
   Info "正在 mintty 终端窗口中打开交互向导（请在新窗口中操作）..."
   & $mintty --exec "$bash" $shPosix
   if ($LASTEXITCODE -ne 0) { throw "安装器退出码 $LASTEXITCODE" }
