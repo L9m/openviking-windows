@@ -27,7 +27,7 @@ iex (New-Object Net.WebClient).DownloadString('https://fastly.jsdelivr.net/gh/L9
 | 操作 | 命令 |
 |---|---|
 | 卸载 | `bash install-openviking-windows.sh --uninstall --yes --harness zcode` |
-| WorkBuddy 集成（MCP） | `bash install-openviking-windows.sh --workbuddy` |
+| WorkBuddy 集成（MCP） | `bash install-openviking-windows.sh --workbuddy`，或写进 `--harness zcode,workbuddy`；交互向导结束时会主动询问 |
 | 全部参数 | `bash install-openviking-windows.sh --help` |
 
 ## 说明

@@ -33,6 +33,12 @@
 #                         hooks 机制，记忆自动注入不可用，MCP 工具按需调用。
 #     --workbuddy-remove  移除 WorkBuddy 的 OpenViking MCP 集成
 #
+#   workbuddy 也可以写进 --harness（官方向导列表里没有它，本脚本会摘出并自己处理）：
+#     bash install-openviking-windows.sh --harness workbuddy          # 只装 workbuddy
+#     bash install-openviking-windows.sh --harness zcode,workbuddy    # 与其他 agent 同轮
+#     bash install-openviking-windows.sh --uninstall --harness zcode,workbuddy
+#   交互向导（无参运行）结束后，检测到 WorkBuddy 尚未集成时会主动询问一次。
+#
 # 环境要求: Git Bash (MSYS2/MINGW/Cygwin)、Node.js 18+、curl、unzip
 #           （npm 可选，仅 --harness cli 需要）
 #
@@ -73,6 +79,44 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 set -- ${forward_args[@]+"${forward_args[@]}"}
+
+# --harness 值里的 workbuddy 由本脚本处理（上游 harness 列表没有它）：摘出并置
+# WB_WANTED，其余 harness 原样转发给官方安装器。--harness=LIST 形式同样支持。
+WB_WANTED=0
+HARNESS_GIVEN=0
+HARNESS_EMPTIED=0
+UNINSTALL_GIVEN=0
+if [ "$#" -gt 0 ]; then
+  _args=("$@")
+  set --
+  _proc=()
+  _i=0
+  while [ "$_i" -lt "${#_args[@]}" ]; do
+    _a="${_args[$_i]}"
+    case "$_a" in
+      --harness|--harness=*)
+        if [ "$_a" = "--harness" ]; then
+          _i=$((_i + 1)); _v="${_args[$_i]:-}"
+        else
+          _v="${_a#--harness=}"
+        fi
+        HARNESS_GIVEN=1
+        _new=""
+        _oldIFS="$IFS"; IFS=','
+        for _h in $_v; do
+          [ -n "$_h" ] || continue
+          if [ "$_h" = "workbuddy" ]; then WB_WANTED=1; else _new="${_new:+$_new,}$_h"; fi
+        done
+        IFS="$_oldIFS"
+        if [ -n "$_new" ]; then _proc+=(--harness "$_new"); else HARNESS_EMPTIED=1; fi
+        ;;
+      *) _proc+=("$_a") ;;
+    esac
+    _i=$((_i + 1))
+  done
+  set -- ${_proc[@]+"${_proc[@]}"}
+  for _a in "$@"; do [ "$_a" = "--uninstall" ] && UNINSTALL_GIVEN=1; done
+fi
 
 note() { printf '==> %s\n' "$*"; }
 warn() { printf '!!  %s\n' "$*" >&2; }
@@ -229,14 +273,23 @@ NODE
 if [ "$WORKBUDDY_REMOVE" -eq 1 ]; then workbuddy_remove; exit 0; fi
 if [ "$WORKBUDDY" -eq 1 ]; then workbuddy_install; exit 0; fi
 
+# 用户在 --harness 里只指定了 workbuddy（值被摘空）：不需要官方安装器，
+# 直接执行后退出；其余参数（--yes 等）对纯 workbuddy 安装无意义，忽略。
+if [ "$HARNESS_EMPTIED" -eq 1 ]; then
+  if [ "$UNINSTALL_GIVEN" -eq 1 ]; then workbuddy_remove; else workbuddy_install; fi
+  exit $?
+fi
+
 # 审查修复（下载前）：未显式指定目标（--harness/--yes/--help）时，官方安装器
 # 会按默认值安装全部探测到的 agent（zcode/codex/kimicode/cli...）。无终端环境
 # （CI、curl|bash 进脚本、以及分配了 console 但无真人的子进程）必须拦下；
 # 有 /dev/tty 时也要求一次带回车确认——console 可打开不代表真有人在敲键盘。
+CONFIRMED_TTY=0
 explicit=0
 for a in "$@"; do
   case "$a" in --harness|--yes|-y|--help|-h) explicit=1; break ;; esac
 done
+[ "$HARNESS_GIVEN" -eq 1 ] && explicit=1
 if [ "$explicit" -ne 1 ]; then
   if exec 3</dev/tty 2>/dev/null; then
     printf '即将进入交互安装向导，按回车继续（5 秒无响应将自动中止）...'
@@ -246,6 +299,7 @@ if [ "$explicit" -ne 1 ]; then
 显式指定请用:  $0 --harness <list> [--yes]   或  $0 --help"
     fi
     exec 3<&-
+    CONFIRMED_TTY=1
   else
     die "无交互终端且未指定目标：为避免按默认安装全部探测到的 agent，已中止
 （未下载、未安装任何内容）。在交互终端中直接运行本脚本可进入选择向导；
@@ -538,4 +592,28 @@ bash -n "$patched" || die "打补丁后的安装器语法校验失败，已中�
 note "运行安装器（参数原样转发）..."
 status=0
 OPENVIKING_INSTALLER_REEXEC=0 bash "$patched" "$@" || status=$?
+
+# ---- WorkBuddy 收尾 ---------------------------------------------------------
+# 上游向导的 harness 列表是官方硬编码的，没有 workbuddy；这里补上等效入口：
+#   a) --harness <list>,workbuddy：上游完成后同轮执行（安装或卸载方向一致）；
+#   b) 交互模式且上游成功：检测到 WorkBuddy 尚未集成时主动询问一次。
+# 两者都只在成功路径执行，失败保持上游退出码不被掩盖。
+if [ "$status" -eq 0 ]; then
+  if [ "$WB_WANTED" -eq 1 ]; then
+    if [ "$UNINSTALL_GIVEN" -eq 1 ]; then
+      workbuddy_remove || status=1
+    else
+      workbuddy_install || status=1
+    fi
+  elif [ "$CONFIRMED_TTY" -eq 1 ] && [ -d "$HOME/.workbuddy" ] \
+       && ! grep -q '"openviking"' "$HOME/.workbuddy/connectors/default/mcp.json" 2>/dev/null; then
+    printf '检测到 WorkBuddy。是否同时安装 OpenViking MCP 集成（stdio）？(y/N) '
+    _ans=""
+    IFS= read -r _ans </dev/tty 2>/dev/null || _ans=""
+    case "$_ans" in
+      [Yy]*) workbuddy_install || status=1 ;;
+      *) note "已跳过 WorkBuddy（之后可用 --harness workbuddy 或 --workbuddy 安装）" ;;
+    esac
+  fi
+fi
 exit "$status"
