@@ -144,9 +144,14 @@ $shPosix = ($sh -replace '\\', '/')
 $interactive = ($null -eq $RemainingArgs -or $RemainingArgs.Count -eq 0) -and -not [Console]::IsInputRedirected
 $mintty = [IO.Path]::GetFullPath((Join-Path (Split-Path $bash) '..\usr\bin\mintty.exe'))
 if ($interactive -and (Test-PathSafe $mintty)) {
-  Info "正在 mintty 终端窗口中打开交互向导（请在新窗口中操作）..."
-  & $mintty --exec "$bash" $shPosix
-  if ($LASTEXITCODE -ne 0) { throw "安装器退出码 $LASTEXITCODE —— 具体失败原因见上方 bash 输出（常见：无法下载官方安装器=网络不通；或未指定 --harness 被安全闸门拦下）" }
+  Info "正在 mintty 终端窗口中打开交互向导（请在新窗口中操作，完成后关闭窗口）..."
+  # mintty 是 GUI 子系统程序：& 调用立即返回且不设置 $LASTEXITCODE（$null 会
+  # 被误判为失败）——用 Start-Process -Wait 等待窗口关闭。mintty 不透传子进程
+  # 退出码（实测 bash exit 7 → mintty 返回 0），因此不在 PS 侧判成败：向导的
+  # 成功/失败信息用户在 mintty 窗口内直接可见。PS 5.1 的 ArgumentList 不给
+  # 含空格的元素自动加引号，需手动嵌。
+  $null = Start-Process -FilePath $mintty `
+    -ArgumentList @('--exec', "`"$bash`"", "`"$shPosix`"") -Wait
   return
 }
 
