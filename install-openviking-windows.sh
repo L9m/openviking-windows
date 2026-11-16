@@ -621,4 +621,61 @@ if [ "$status" -eq 0 ]; then
     esac
   fi
 fi
+
+# ---- Cursor 收尾 -------------------------------------------------------------
+# Cursor 的 hooks 只有 command 型（无 process 型），且 Windows 上由非 bash
+# shell 执行——上游渲染的 POSIX 单引号命令（VAR='v' 'node' 'script'）必然
+# 报错。社区标准解法（superpowers #871）：.cmd 包装。安装/重装 cursor 后：
+# 生成 hook.cmd / uri-guard.cmd（内部设 env 并调真实 node），并把
+# ~/.cursor/hooks.json 里本安装器的条目改写为 wrapper 调用（正斜杠路径，
+# cmd 实测可执行）。无 cursor 集成时自动跳过。
+cursor_cmd_wrapper_fix() {
+  local hooks_file="$HOME/.cursor/hooks.json"
+  local scripts_dir="${OPENVIKING_HOME:-$HOME/.openviking}/agent-integrations/cursor/scripts"
+  [ -f "$hooks_file" ] || return 0
+  [ -f "$scripts_dir/hook.mjs" ] || return 0
+  local node_win node_raw
+  node_raw="$(command -v node)"
+  case "$node_raw" in *.exe) ;; *) [ -f "${node_raw}.exe" ] && node_raw="${node_raw}.exe" ;; esac
+  node_win="$(cygpath -m "$node_raw")"
+  local wrapper
+  for wrapper in hook uri-guard; do
+    printf '@echo off\r\nsetlocal\r\nset "OPENVIKING_INTEGRATION_ID=openviking-memory"\r\nset "OPENVIKING_HOOK_SOURCE=cursor"\r\n"%s" "%%~dp0%s.mjs" %%*\r\nexit /b %%ERRORLEVEL%%\r\n' \
+      "$node_win" "$wrapper" > "$scripts_dir/$wrapper.cmd"
+  done
+  node - "$hooks_file" "$(cygpath -m "$scripts_dir")" <<'NODE'
+const fs = require("node:fs");
+const [hooksFile, scriptsDir] = process.argv.slice(2);
+const cfg = JSON.parse(fs.readFileSync(hooksFile, "utf8"));
+let changed = 0;
+for (const [event, entries] of Object.entries(cfg.hooks || {})) {
+  for (const e of entries) {
+    if (typeof e.command !== "string" || !e.command.includes("agent-integrations")) continue;
+    e.command = e.command.includes("uri-guard")
+      ? '"' + scriptsDir + '/uri-guard.cmd" cursor'
+      : '"' + scriptsDir + '/hook.cmd" ' + event + ' cursor';
+    changed++;
+  }
+}
+if (changed) {
+  // 重装时上游的去重逻辑不认识 wrapper 形式的旧条目，会在同一事件下追加
+  // 重复项（hook 被执行两遍）——wrapper 化后按 command 去重。
+  for (const [event, entries] of Object.entries(cfg.hooks)) {
+    const seen = new Set();
+    cfg.hooks[event] = entries.filter((e) => {
+      const key = typeof e.command === "string" ? e.command : JSON.stringify(e);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (cfg.hooks[event].length === 0) delete cfg.hooks[event];
+  }
+  fs.writeFileSync(hooksFile + ".bak", fs.readFileSync(hooksFile));
+  fs.writeFileSync(hooksFile, JSON.stringify(cfg, null, 2) + "\n");
+}
+console.log("cursor hooks -> cmd wrappers: " + changed);
+NODE
+}
+cursor_cmd_wrapper_fix
+
 exit "$status"
